@@ -1,0 +1,36 @@
+{
+  "name": "mcp-nsa",
+  "version": "1.0.0",
+  "description": "MCP server - Polish administrative court rulings (NSA + WSA) via CBOSA (orzeczenia.nsa.gov.pl)",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts"
+  },
+  "keywords": [
+    "mcp",
+    "nsa",
+    "wsa",
+    "cbosa",
+    "orzecznictwo",
+    "sady-administracyjne",
+    "rodo",
+    "uodo",
+    "legal",
+    "poland"
+  ],
+  "author": "MateMatic / Wieslaw Mazur",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5",
+    "tsx": "^4.19.3",
+    "@types/node": "^20.14.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
