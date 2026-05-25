@@ -480,12 +480,58 @@ function formatJudgment(d: JudgmentDetail): string {
 }
 
 // ---------------------------------------------------------------------------
+// Instructions (procedural orchestration)
+// Pattern z dograh-hq/dograh v1.31.0 (BSD-2) via mcp-eu-compliance v0.2.0.
+// ---------------------------------------------------------------------------
+
+const INSTRUCTIONS = `Ten serwer MCP udostepnia orzecznictwo polskich sadow administracyjnych - NSA (Naczelny Sad Administracyjny) + 16 WSA (Wojewodzkie Sady Administracyjne) - przez baze CBOSA (orzeczenia.nsa.gov.pl). To gdzie zyje polskie orzecznictwo RODO/UODO, podatkowe, celne, kontrola decyzji administracji.
+
+## Kolejnosc wywolan
+
+### Szukanie po sygnaturze
+1. \`search_by_case\` - po sygnaturze ('III OSK 1377/23' NSA, 'I SA/Gl 659/22' WSA). Najszybciej.
+
+### Szerokie szukanie
+2. \`search\` - po slowach kluczowych (query: 'RODO art 6', 'tajemnica skarbowa'), sadzie, zakresie dat. Top-5 pelnych metadanych pobierane od razu.
+
+### Pelny tekst
+3. \`get_judgment\` - po doc_id (10-znakowy hex z URL CBOSA) zwraca sentencje + uzasadnienie (pierwsze 2000 znakow).
+
+## Twarde ograniczenia
+
+- **Rate limiting** - CBOSA nie ma oficjalnego API. Konektor throttluje. NIE wysylaj burstow zapytan.
+- **Sady administracyjne TYLKO** - dla sadow powszechnych/SN/TK/KIO uzyj mcp-saos.
+- **\`structuredContent.citations\`** zawsze: title, url (orzeczenia.nsa.gov.pl), case_number, court, judgment_date, doc_id.
+- **Bez modyfikacji tresci wyroku** - integralna kopia z CBOSA.
+
+## Iteracja po bledach
+
+Tool zwraca \`isError: true\` + tekst z prefixem \`[code]\`. Kody:
+- \`missing_arg\` - brak doc_id (get_judgment) lub caseNumber (search_by_case).
+- \`not_found\` - orzeczenie nie ma w CBOSA. Sprobuj search z innym query lub czy nie sad powszechny.
+- \`upstream_error\` - blad CBOSA (HTTP, timeout, scraping issue). Retry raz przed surface do uzytkownika.
+
+## Styl odpowiedzi
+
+- Cytuj z sadem i datą: "III OSK 1377/23 (NSA, 2023-10-15)".
+- Dla linii orzeczniczej sortuj chronologicznie.
+- NIE wymyslaj sygnatur ani sklad sedziowskich - wszystko z \`structuredContent.citations\`.`;
+
+// ---------------------------------------------------------------------------
 // Tool definitions
 // ---------------------------------------------------------------------------
+
+const READ_ONLY_ANNOTATIONS = {
+    readOnlyHint: true,
+    idempotentHint: true,
+    destructiveHint: false,
+    openWorldHint: true, // CBOSA upstream live
+} as const;
 
 const TOOLS = [
     {
         name: "search",
+        annotations: READ_ONLY_ANNOTATIONS,
         description:
             "Przeszukuje Centralna Baze Orzeczen Sadow Administracyjnych (CBOSA) - " +
             "Naczelny Sad Administracyjny + 16 wojewodzkich sadow administracyjnych. " +
@@ -540,6 +586,7 @@ const TOOLS = [
     },
     {
         name: "get_judgment",
+        annotations: READ_ONLY_ANNOTATIONS,
         description:
             "Pobiera pelne orzeczenie z CBOSA po jego doc_id (10-znakowy hex). " +
             "Zwraca metadane (sygnatura, sad, data, sklad, hasla tematyczne, " +
@@ -559,6 +606,7 @@ const TOOLS = [
     },
     {
         name: "search_by_case",
+        annotations: READ_ONLY_ANNOTATIONS,
         description:
             "Skrot: szuka orzeczenia po sygnaturze. Odpowiednik search z parametrem " +
             "caseNumber. Jesli orzeczenie nie znajdzie sie - sygnatura moze byc z sadu " +
@@ -580,9 +628,20 @@ const TOOLS = [
 // MCP Server setup
 // ---------------------------------------------------------------------------
 
+// Strukturalne kody bledow.
+type ErrorCode = "missing_arg" | "not_found" | "upstream_error";
+
+function errorResult(text: string, code: ErrorCode) {
+    return {
+        content: [{ type: "text" as const, text: `[${code}] ${text}` }],
+        structuredContent: { error_code: code },
+        isError: true,
+    };
+}
+
 const server = new Server(
-    { name: "mcp-nsa", version: "1.0.0" },
-    { capabilities: { tools: {} } },
+    { name: "mcp-nsa", version: "1.1.0" },
+    { capabilities: { tools: {} }, instructions: INSTRUCTIONS },
 );
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
@@ -590,6 +649,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         name: t.name,
         description: t.description,
         inputSchema: t.inputSchema,
+        annotations: t.annotations,
     })),
 }));
 
@@ -651,15 +711,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
             case "get_judgment": {
                 if (!a.doc_id || typeof a.doc_id !== "string") {
-                    return {
-                        content: [
-                            {
-                                type: "text",
-                                text: "Blad: parametr 'doc_id' (10-znakowy hex) jest wymagany.",
-                            },
-                        ],
-                        isError: true,
-                    };
+                    return errorResult(
+                        "parametr 'doc_id' (10-znakowy hex) jest wymagany.",
+                        "missing_arg",
+                    );
                 }
                 const d = await nsaGetJudgment(a.doc_id);
                 return {
@@ -672,15 +727,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
             case "search_by_case": {
                 if (!a.caseNumber || typeof a.caseNumber !== "string") {
-                    return {
-                        content: [
-                            {
-                                type: "text",
-                                text: "Blad: parametr 'caseNumber' jest wymagany.",
-                            },
-                        ],
-                        isError: true,
-                    };
+                    return errorResult("parametr 'caseNumber' jest wymagany.", "missing_arg");
                 }
                 return await handleSearch(
                     { caseNumber: a.caseNumber },
@@ -689,24 +736,17 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             }
 
             default:
-                return {
-                    content: [
-                        { type: "text", text: `Nieznane narzedzie: ${name}` },
-                    ],
-                    isError: true,
-                };
+                return errorResult(`Nieznane narzedzie: ${name}`, "missing_arg");
         }
     } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
-        return {
-            content: [
-                {
-                    type: "text",
-                    text: `Blad komunikacji z CBOSA (orzeczenia.nsa.gov.pl): ${msg}\n\nSprobuj ponownie za chwile.`,
-                },
-            ],
-            isError: true,
-        };
+        if (/404|not found/i.test(msg)) {
+            return errorResult(`Orzeczenie nie znalezione w CBOSA: ${msg}.`, "not_found");
+        }
+        return errorResult(
+            `Blad komunikacji z CBOSA (orzeczenia.nsa.gov.pl): ${msg}. Sprobuj ponownie za chwile.`,
+            "upstream_error",
+        );
     }
 });
 
