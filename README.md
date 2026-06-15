@@ -61,7 +61,7 @@ W `patron/backend/mcp-servers.json` (równolegle do `mcp-saos` i `mcp-eu-sparql`
   "name": "nsa",
   "transport": "stdio",
   "command": "node",
-  "args": ["C:/Users/Wieslaw/mcp-nsa/dist/index.js"],
+  "args": ["C:/Users/<TWOJ-UZYTKOWNIK>/mcp-nsa/dist/index.js"],
   "enabled": true
 }
 ```
