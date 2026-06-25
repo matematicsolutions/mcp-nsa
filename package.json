@@ -1,6 +1,6 @@
 {
-  "name": "mcp-nsa",
-  "version": "1.1.0",
+  "name": "@matematicsolutions/mcp-nsa",
+  "version": "1.1.1",
   "description": "MCP server - Polish administrative court rulings (NSA + WSA) via CBOSA (orzeczenia.nsa.gov.pl)",
   "main": "dist/index.js",
   "scripts": {
@@ -33,5 +33,20 @@
   },
   "engines": {
     "node": ">=18.0.0"
+  },
+  "mcpName": "io.github.matematicsolutions/mcp-nsa",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/matematicsolutions/mcp-nsa.git"
+  },
+  "bin": {
+    "mcp-nsa": "dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   }
 }
