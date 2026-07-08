@@ -33,11 +33,11 @@ A to właśnie tam żyje merytoryczne orzecznictwo:
 - **Zezwolenia administracyjne, koncesje**
 - **Kontrola działalności administracji publicznej**
 
-`mcp-nsa` zamyka tę lukę. Pokrycie: **427 000+ orzeczeń**, od 2004 do dziś.
+`mcp-nsa` zamyka tę lukę. Pokrycie: **2 390 000+ orzeczeń** (zweryfikowane live 2026-07-08 pełnym zakresem dat), od 1981 do dziś.
 
 ## Tooly
 
-- **`search(query, caseNumber?, court?, dateFrom?, dateTo?, pageSize?, pageNumber?)`**
+- **`search(query, caseNumber?, court?, dateFrom?, dateTo?, pageNumber?)`**
   — wyszukiwanie po słowach, sygnaturze, sądzie, dacie. Pobiera top-5 pełnych
   orzeczeń (sygnatura, sąd, data, skład, hasła, podst. prawna, fragment).
 - **`get_judgment(doc_id)`** — pełne orzeczenie po 10-znakowym hex doc_id
@@ -88,7 +88,7 @@ W `patron/backend/mcp-servers.json` (równolegle do `mcp-saos` i `mcp-eu-sparql`
 ```bash
 echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"s","version":"0"}}}
 {"jsonrpc":"2.0","method":"notifications/initialized"}
-{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"search","arguments":{"query":"RODO art 6","pageSize":10}}}' \
+{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"search","arguments":{"query":"RODO art 6"}}}' \
   | node dist/index.js
 ```
 

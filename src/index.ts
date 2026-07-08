@@ -39,15 +39,23 @@ const DEFAULT_USER_AGENT =
 // Custom Agent z wylaczona weryfikacja SSL - tylko dla CBOSA (publiczne dane).
 const insecureAgent = new https.Agent({ rejectUnauthorized: false });
 
+interface HttpResponse {
+    body: string;
+    /** Ciasteczka z Set-Cookie - CBOSA trzyma wynik wyszukiwania w sesji;
+     *  paginacja (GET /cbo/find?p=N) wymaga odeslania tych cookies. */
+    cookies: string[];
+}
+
 async function httpRequest(args: {
     path: string;
     method?: "GET" | "POST";
     formData?: Record<string, string>;
-}): Promise<string> {
-    const { path, method = "GET", formData } = args;
+    cookies?: string[];
+}): Promise<HttpResponse> {
+    const { path, method = "GET", formData, cookies } = args;
     const url = `${BASE_URL}${path}`;
 
-    return new Promise<string>((resolve, reject) => {
+    return new Promise<HttpResponse>((resolve, reject) => {
         const isPost = method === "POST";
         const body = isPost && formData
             ? new URLSearchParams(formData).toString()
@@ -61,6 +69,9 @@ async function httpRequest(args: {
             headers["Content-Type"] = "application/x-www-form-urlencoded";
             headers["Content-Length"] = String(Buffer.byteLength(body ?? ""));
         }
+        if (cookies && cookies.length > 0) {
+            headers["Cookie"] = cookies.join("; ");
+        }
 
         const req = https.request(
             url,
@@ -71,6 +82,9 @@ async function httpRequest(args: {
                 timeout: HTTP_TIMEOUT_MS,
             },
             (res) => {
+                const setCookies = (res.headers["set-cookie"] ?? []).map(
+                    (c) => c.split(";")[0],
+                );
                 if (
                     res.statusCode &&
                     res.statusCode >= 300 &&
@@ -84,6 +98,7 @@ async function httpRequest(args: {
                             : res.headers.location,
                         method,
                         formData,
+                        cookies: [...(cookies ?? []), ...setCookies],
                     })
                         .then(resolve)
                         .catch(reject);
@@ -100,7 +115,10 @@ async function httpRequest(args: {
                 const chunks: Buffer[] = [];
                 res.on("data", (c) => chunks.push(c));
                 res.on("end", () =>
-                    resolve(Buffer.concat(chunks).toString("utf8")),
+                    resolve({
+                        body: Buffer.concat(chunks).toString("utf8"),
+                        cookies: setCookies,
+                    }),
                 );
                 res.on("error", reject);
             },
@@ -152,7 +170,7 @@ function stripHtml(s: string): string {
         .trim();
 }
 
-function extractDocIds(html: string): string[] {
+export function extractDocIds(html: string): string[] {
     const re = /href="\/doc\/([A-Z0-9]+)"/g;
     const seen = new Set<string>();
     const out: string[] = [];
@@ -166,7 +184,7 @@ function extractDocIds(html: string): string[] {
     return out;
 }
 
-function extractTotalResults(html: string): number {
+export function extractTotalResults(html: string): number {
     const m = html.match(/Znaleziono\s+(\d+)\s+orzecze[nń]/);
     return m ? parseInt(m[1], 10) : 0;
 }
@@ -203,7 +221,7 @@ interface JudgmentDetail {
     text?: string;
 }
 
-function parseJudgmentHtml(html: string, doc_id: string): JudgmentDetail {
+export function parseJudgmentHtml(html: string, doc_id: string): JudgmentDetail {
     const data: JudgmentDetail = { doc_id };
 
     const titleMatch = html.match(/<TITLE>([^<]+)<\/TITLE>/i);
@@ -326,33 +344,39 @@ async function nsaSearch(params: {
     court?: string;
     dateFrom?: string;
     dateTo?: string;
-    pageSize?: number;
     pageNumber?: number;
 }): Promise<{ ids: string[]; total: number }> {
+    // Nazwy pol ZWERYFIKOWANE live 2026-07-08 przeciw formularzowi /cbo/query:
+    // daty to `odDaty`/`doDaty` (nie `dataOd`/`dataDo` - tamte byly cichym no-opem),
+    // selecty przyjmuja wartosci tekstowe ("dowolny" / pelna nazwa sadu), nie indeksy.
+    // CBOSA renderuje stale 10 wynikow na strone (parametr rozmiaru strony nie istnieje).
     const formData: Record<string, string> = {
         wszystkieSlowa: params.query ?? "",
-        sygnatura: params.caseNumber ?? "",
-        sad: params.court ?? "",
         wystepowanie: "gdziekolwiek",
         odmiana: "on",
-        dataOd: params.dateFrom ?? "",
-        dataDo: params.dateTo ?? "",
+        sygnatura: params.caseNumber ?? "",
+        sad: params.court ?? "dowolny",
         rodzaj: "dowolny",
-        organWyd: "",
-        cenzura: "",
-        akt: "",
-        zak: "",
-        prz: "",
-        wPo: String(Math.min(100, Math.max(10, params.pageSize ?? 20))),
-        wStr: String(Math.max(1, params.pageNumber ?? 1)),
-        wWyn: "1",
-        wUkr: "",
-        wZaa: "1",
-        wPrzS: "on",
+        symbole: "",
+        odDaty: params.dateFrom ?? "",
+        doDaty: params.dateTo ?? "",
+        sedziowie: "",
+        funkcja: "",
+        submit: "Szukaj",
     };
-    const html = await throttled(() =>
+    // POST rejestruje zapytanie w sesji CBOSA i zwraca strone 1 wynikow.
+    const first = await throttled(() =>
         httpRequest({ path: "/cbo/search", method: "POST", formData }),
     );
+    const page = Math.max(1, params.pageNumber ?? 1);
+    let html = first.body;
+    if (page > 1) {
+        // Kolejne strony: GET /cbo/find?p=N z cookies sesji z POST-a.
+        const next = await throttled(() =>
+            httpRequest({ path: `/cbo/find?p=${page}`, cookies: first.cookies }),
+        );
+        html = next.body;
+    }
     return {
         ids: extractDocIds(html),
         total: extractTotalResults(html),
@@ -361,10 +385,10 @@ async function nsaSearch(params: {
 
 async function nsaGetJudgment(doc_id: string): Promise<JudgmentDetail> {
     const safeId = doc_id.replace(/[^A-Z0-9]/g, "");
-    const html = await throttled(() =>
+    const res = await throttled(() =>
         httpRequest({ path: `/doc/${safeId}` }),
     );
-    return parseJudgmentHtml(html, safeId);
+    return parseJudgmentHtml(res.body, safeId);
 }
 
 // ---------------------------------------------------------------------------
@@ -492,7 +516,7 @@ const INSTRUCTIONS = `Ten serwer MCP udostepnia orzecznictwo polskich sadow admi
 1. \`search_by_case\` - po sygnaturze ('III OSK 1377/23' NSA, 'I SA/Gl 659/22' WSA). Najszybciej.
 
 ### Szerokie szukanie
-2. \`search\` - po slowach kluczowych (query: 'RODO art 6', 'tajemnica skarbowa'), sadzie, zakresie dat. Top-5 pelnych metadanych pobierane od razu.
+2. \`search\` - po slowach kluczowych (query: 'RODO art 6', 'tajemnica skarbowa'), sadzie, zakresie dat (dateFrom/dateTo, YYYY-MM-DD). CBOSA zwraca 10 wynikow na strone - paginacja przez pageNumber. Top-5 pelnych metadanych pobierane od razu.
 
 ### Pelny tekst
 3. \`get_judgment\` - po doc_id (10-znakowy hex z URL CBOSA) zwraca sentencje + uzasadnienie (pierwsze 2000 znakow).
@@ -568,16 +592,10 @@ const TOOLS = [
                     type: "string",
                     description: "Data orzeczenia do (YYYY-MM-DD).",
                 },
-                pageSize: {
-                    type: "number",
-                    description:
-                        "Liczba wynikow na strone z CBOSA (10-100). Domyslnie 20. Tylko z pierwszych 5 pobierane sa pelne dane.",
-                    minimum: 10,
-                    maximum: 100,
-                },
                 pageNumber: {
                     type: "number",
-                    description: "Numer strony (od 1). Do paginacji.",
+                    description:
+                        "Numer strony (od 1). CBOSA zwraca stale 10 wynikow na strone. Do paginacji.",
                     minimum: 1,
                 },
             },
@@ -640,7 +658,7 @@ function errorResult(text: string, code: ErrorCode) {
 }
 
 const server = new Server(
-    { name: "mcp-nsa", version: "1.1.0" },
+    { name: "mcp-nsa", version: "1.2.0" }, // keep in sync with package.json "version"
     { capabilities: { tools: {} }, instructions: INSTRUCTIONS },
 );
 
@@ -664,8 +682,6 @@ async function handleSearch(args: Record<string, unknown>, headline: string) {
         dateFrom:
             typeof args.dateFrom === "string" ? args.dateFrom : undefined,
         dateTo: typeof args.dateTo === "string" ? args.dateTo : undefined,
-        pageSize:
-            typeof args.pageSize === "number" ? args.pageSize : undefined,
         pageNumber:
             typeof args.pageNumber === "number" ? args.pageNumber : undefined,
     };
@@ -760,7 +776,11 @@ async function main() {
     process.stderr.write("mcp-nsa server started (stdio transport)\n");
 }
 
-main().catch((err) => {
-    process.stderr.write(`Fatal error: ${err}\n`);
-    process.exit(1);
-});
+// Uruchamiaj serwer tylko przy bezposrednim wykonaniu (node dist/index.js) -
+// testy fixture importuja parsery z tego modulu bez startowania stdio transportu.
+if (require.main === module) {
+    main().catch((err) => {
+        process.stderr.write(`Fatal error: ${err}\n`);
+        process.exit(1);
+    });
+}

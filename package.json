@@ -1,13 +1,15 @@
 {
   "name": "@matematicsolutions/mcp-nsa",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "description": "MCP server - Polish administrative court rulings (NSA + WSA) via CBOSA (orzeczenia.nsa.gov.pl)",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
-    "drift": "node test/drift.mjs"
+    "drift": "node test/drift.mjs",
+    "test:parse": "node test/parse.mjs",
+    "smoke": "node test/smoke.mjs"
   },
   "keywords": [
     "mcp",
