@@ -1,35 +1,35 @@
 # AGENTS.md - mcp-nsa
 
-Plik standardu [agents.md](https://agents.md) (Linux Foundation / Agentic AI Foundation) - kanoniczne instrukcje dla agentow AI pracujacych z tym repozytorium. Czytany natywnie przez Cursor, Codex (OpenAI), Jules (Google), Devin / Windsurf, Aider, Amp, Factory, GitHub Copilot.
+An [agents.md](https://agents.md) standard file (Linux Foundation / Agentic AI Foundation) - canonical instructions for AI agents working with this repository. Read natively by Cursor, Codex (OpenAI), Jules (Google), Devin / Windsurf, Aider, Amp, Factory, GitHub Copilot.
 
-## Cel projektu
+## Project goal
 
-Serwer **MCP (Model Context Protocol)** dla **orzecznictwa polskich sadow administracyjnych** - **Naczelnego Sadu Administracyjnego (NSA) + 16 Wojewodzkich Sadow Administracyjnych (WSA)** - przez baze **CBOSA** (`orzeczenia.nsa.gov.pl`).
+An **MCP (Model Context Protocol)** server for the **case law of the Polish administrative courts** - **Naczelny Sad Administracyjny / NSA (Supreme Administrative Court) + 16 Wojewodzkie Sady Administracyjne / WSA (regional administrative courts)** - via the **CBOSA** database (`orzeczenia.nsa.gov.pl`).
 
-To miejsce gdzie zyje polskie orzecznictwo **RODO / podatkowe / administracyjne** - praktycznie wszystkie wyroki, ktore interesuja kancelarie compliance i podatkowe.
+This is where Polish **GDPR / tax / administrative** case law lives - practically every ruling of interest to compliance and tax law firms.
 
-Jeden z 5 konektorow polskiego prawa MateMatic ([`mcp-saos`](https://github.com/matematicsolutions/mcp-saos), [`mcp-nsa`](https://github.com/matematicsolutions/mcp-nsa) (ten), [`mcp-isap`](https://github.com/matematicsolutions/mcp-isap), [`mcp-krs`](https://github.com/matematicsolutions/mcp-krs), [`mcp-eu-sparql`](https://github.com/matematicsolutions/mcp-eu-sparql)).
+One of MateMatic's 5 Polish-law connectors ([`mcp-saos`](https://github.com/matematicsolutions/mcp-saos), [`mcp-nsa`](https://github.com/matematicsolutions/mcp-nsa) (this one), [`mcp-isap`](https://github.com/matematicsolutions/mcp-isap), [`mcp-krs`](https://github.com/matematicsolutions/mcp-krs), [`mcp-eu-sparql`](https://github.com/matematicsolutions/mcp-eu-sparql)).
 
-## Kontekst MateMatic (TWARDE OGRANICZENIA)
+## MateMatic context (HARD CONSTRAINTS)
 
-Repo prowadzi [MateMatic Solutions](https://matematicsolutions.com). Konektor jest **infrastruktura zaufania**.
+The repo is run by [MateMatic Solutions](https://matematicsolutions.com). The connector is **trust infrastructure**.
 
-- **Kazde wywolanie narzedzia MUSI zwracac `structuredContent.citations`** z: tytulem orzeczenia, URL kanonicznym (CBOSA), sadem (NSA / WSA + lokalizacja), data, sygnatura.
-- **Stateless** - bez cache zapytan z PII.
-- **Bez modyfikacji tekstu** - integralna kopia z CBOSA.
-- **Rate limiting po stronie konektora** - CBOSA nie ma oficjalnego API, scrapujemy ostroznie z respektem dla zasobow sadu.
+- **Every tool call MUST return `structuredContent.citations`** with: ruling title, canonical URL (CBOSA), court (NSA / WSA + location), date, case number.
+- **Stateless** - no caching of queries with PII.
+- **No text modification** - a faithful copy from CBOSA.
+- **Rate limiting on the connector side** - CBOSA has no official API; we scrape carefully, with respect for the court's resources.
 
-## Narzedzia MCP (tools contract)
+## MCP tools (tools contract)
 
-| Tool | Parametry kluczowe | Zwraca |
+| Tool | Key parameters | Returns |
 |---|---|---|
-| `search` | `query`, `court?` (NSA/WSA+miasto), `date_from?`, `date_to?` | lista orzeczen + citations |
-| `get_judgment` | `judgment_id` | pelny tekst orzeczenia + citations |
-| `search_by_case` | `case_number` (sygnatura) | wszystkie orzeczenia danej sygnatury |
+| `search` | `query`, `court?` (NSA/WSA+city), `date_from?`, `date_to?` | list of rulings + citations |
+| `get_judgment` | `judgment_id` | full ruling text + citations |
+| `search_by_case` | `case_number` (case number) | all rulings for a given case number |
 
-Pelny opis: `src/index.ts` + `README.md`.
+Full description: `src/index.ts` + `README.md`.
 
-## Build i test
+## Build and test
 
 ```bash
 npm install        # Node 20+
@@ -38,36 +38,36 @@ npm start          # node dist/index.js
 npm run dev        # ts-node src/index.ts
 ```
 
-Test przez Inspector MCP: `npx @modelcontextprotocol/inspector node dist/index.js`.
+Test via the MCP Inspector: `npx @modelcontextprotocol/inspector node dist/index.js`.
 
-## Zasady kodu
+## Code rules
 
 - **TypeScript strict**.
 - **`@modelcontextprotocol/sdk` ^1.12.0**.
-- **Respektuj `robots.txt` CBOSA** i rate limity (User-Agent z kontaktem, throttling).
-- **Bez polskich znakow w commit messages**.
-- **CHANGELOG bump przy zmianie kontraktu**.
+- **Respect CBOSA `robots.txt`** and rate limits (User-Agent with contact, throttling).
+- **No Polish characters in commit messages**.
+- **CHANGELOG bump on contract change**.
 
-## Czego NIE robic (twarde reguly)
+## What NOT to do (hard rules)
 
-- **NIE scrapuj agresywnie** - sady administracyjne to publiczna infrastruktura.
-- **NIE dodawaj tools ktore wysylaja PII** poza CBOSA.
-- **NIE modyfikuj tresci wyroku**.
-- **NIE cachuj zapytan z PII** w konektorze.
+- **DO NOT scrape aggressively** - the administrative courts are public infrastructure.
+- **DO NOT add tools that send PII** outside CBOSA.
+- **DO NOT modify ruling content**.
+- **DO NOT cache queries with PII** in the connector.
 
-## Zrodla prawdy
+## Sources of truth
 
 1. [README.md](./README.md)
 2. [CHANGELOG.md](./CHANGELOG.md)
 3. `src/index.ts`
-4. [CBOSA - baza orzeczen](https://orzeczenia.nsa.gov.pl) - upstream
+4. [CBOSA - case-law database](https://orzeczenia.nsa.gov.pl) - upstream
 
-## Kompatybilnosc agentow
+## Agent compatibility
 
-Standard [AGENTS.md](https://agents.md). Dla Claude Code dodatkowo plik [CLAUDE.md](./CLAUDE.md).
+The [AGENTS.md](https://agents.md) standard. For Claude Code there is additionally a [CLAUDE.md](./CLAUDE.md) file.
 
-## Licencja
+## License
 
-**MIT** - patrz [LICENSE](./LICENSE).
+**MIT** - see [LICENSE](./LICENSE).
 
-Cytowanie: *MateMatic Solutions (2026), mcp-nsa - MCP server dla polskiego orzecznictwa NSA/WSA (CBOSA), https://github.com/matematicsolutions/mcp-nsa, MIT.*
+Citation: *MateMatic Solutions (2026), mcp-nsa - MCP server for Polish NSA/WSA case law (CBOSA), https://github.com/matematicsolutions/mcp-nsa, MIT.*
