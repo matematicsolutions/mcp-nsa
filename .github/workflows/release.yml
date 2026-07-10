@@ -34,17 +34,17 @@ jobs:
           node-version: "22"
           registry-url: "https://registry.npmjs.org"
 
-      - name: Ensure npm CLI >= 11.5.1
-        run: npm install -g npm@latest
-
       - name: Install dependencies
         run: npm ci
 
       - name: Build
         run: npm run build
 
-      - name: Publish to npm (granular token + provenance)
-        run: npm publish --provenance --access public
+      # --provenance dropped: npm@latest global reinstall corrupts the bundled
+      # sigstore module in this runner image (MODULE_NOT_FOUND 'sigstore'),
+      # and the default npm shipped with setup-node is new enough to publish.
+      - name: Publish to npm (granular token)
+        run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
