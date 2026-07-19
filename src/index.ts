@@ -524,6 +524,9 @@ const INSTRUCTIONS = `Ten serwer MCP udostepnia orzecznictwo polskich sadow admi
 ## Twarde ograniczenia
 
 - **Rate limiting** - CBOSA nie ma oficjalnego API. Konektor throttluje. NIE wysylaj burstow zapytan.
+  MIN_INTERVAL_MS=500 jest bezpieczne dla ruchu INTERAKTYWNEGO (pojedyncze zapytania uzytkownika).
+  Do BULK-HARVESTU to za szybko: 2026-07-19 ciagly bieg na 2 rps dostal pelny ban IP (403 na
+  wszystkie sciezki, takze GET /doc i formularz /cbo/query), a 0.5 rps chodzilo 10 h czysto.
 - **Sady administracyjne TYLKO** - dla sadow powszechnych/SN/TK/KIO uzyj mcp-saos.
 - **\`structuredContent.citations\`** zawsze: title, url (orzeczenia.nsa.gov.pl), case_number, court, judgment_date, doc_id.
 - **Bez modyfikacji tresci wyroku** - integralna kopia z CBOSA.
