@@ -535,6 +535,7 @@ const INSTRUCTIONS = `Ten serwer MCP udostepnia orzecznictwo polskich sadow admi
 
 Tool zwraca \`isError: true\` + tekst z prefixem \`[code]\`. Kody:
 - \`missing_arg\` - brak doc_id (get_judgment) lub caseNumber (search_by_case).
+- \`invalid_args\` - parametr ma zly TYP wobec inputSchema (np. query jako liczba, pageNumber jako tekst). Popraw typ i powtorz - to blad wywolania, nie zrodla.
 - \`not_found\` - orzeczenie nie ma w CBOSA. Sprobuj search z innym query lub czy nie sad powszechny.
 - \`upstream_error\` - blad CBOSA (HTTP, timeout, scraping issue). Retry raz przed surface do uzytkownika.
 
@@ -650,7 +651,7 @@ const TOOLS = [
 // ---------------------------------------------------------------------------
 
 // Strukturalne kody bledow.
-type ErrorCode = "missing_arg" | "not_found" | "upstream_error";
+type ErrorCode = "missing_arg" | "invalid_args" | "not_found" | "upstream_error";
 
 function errorResult(text: string, code: ErrorCode) {
     return {
@@ -658,6 +659,69 @@ function errorResult(text: string, code: ErrorCode) {
         structuredContent: { error_code: code },
         isError: true,
     };
+}
+
+// --- Walidacja argumentow wobec ZADEKLAROWANEGO inputSchema ---------------
+// setRequestHandler(CallToolRequestSchema) ze SDK waliduje tylko KOPERTE zadania;
+// pola `arguments` NIE sprawdza wobec inputSchema danego toola. Skutek: `search`
+// przyjmowal query jako liczbe/tablice i leciał dalej, podczas gdy get_judgment
+// mial reczny `typeof === "string"`. Zewnetrzny audyt (Ahmad-Faraj/mcp-conformance,
+// check `tools-call-invalid-args`) zlapal to na 4 konektorach floty.
+// Zakres celowo waski: TYPY + pola WYMAGANE. `enum` NIE jest egzekwowany - dotad
+// wartosc spoza listy szla do CBOSA i czasem dzialala, wiec zaostrzenie tego
+// byloby zmiana zachowania szersza niz naprawiana wada (osobna decyzja).
+// Nieznane pola przepuszczamy swiadomie (forward-compat ze starszymi klientami).
+type JsonType = "string" | "number" | "integer" | "boolean" | "array" | "object";
+
+function typeOk(v: unknown, t: JsonType): boolean {
+    switch (t) {
+        case "string":  return typeof v === "string";
+        case "number":  return typeof v === "number" && Number.isFinite(v);
+        case "integer": return typeof v === "number" && Number.isInteger(v);
+        case "boolean": return typeof v === "boolean";
+        case "array":   return Array.isArray(v);
+        case "object":  return typeof v === "object" && v !== null && !Array.isArray(v);
+        default:        return true;
+    }
+}
+
+function describe(v: unknown): string {
+    if (Array.isArray(v)) return "array";
+    if (v === null) return "null";
+    return typeof v;
+}
+
+// Zwraca {msg, code} albo null. Kod rozrozniony celowo: BRAK pola wymaganego to
+// nadal `missing_arg` (tak bylo przed ta zmiana i tak moga na to patrzec klienci),
+// a `invalid_args` jest NOWE i dotyczy wylacznie zlego TYPU. Inaczej ta poprawka
+// po cichu przemianowalaby istniejacy blad.
+function validateArgs(
+    toolName: string,
+    args: Record<string, unknown>,
+): { msg: string; code: ErrorCode } | null {
+    const tool = TOOLS.find((t) => t.name === toolName);
+    if (!tool) return null;
+    const schema = tool.inputSchema as {
+        properties?: Record<string, { type?: string }>;
+        required?: readonly string[];
+    };
+    for (const req of schema.required ?? []) {
+        if (args[req] === undefined || args[req] === null) {
+            return { msg: `parametr '${req}' jest wymagany.`, code: "missing_arg" };
+        }
+    }
+    for (const [key, val] of Object.entries(args)) {
+        if (val === undefined || val === null) continue;
+        const spec = schema.properties?.[key];
+        if (!spec || !spec.type) continue;
+        if (!typeOk(val, spec.type as JsonType)) {
+            return {
+                msg: `parametr '${key}' ma byc typu ${spec.type}, dostano ${describe(val)}.`,
+                code: "invalid_args",
+            };
+        }
+    }
+    return null;
 }
 
 const server = new Server(
@@ -720,6 +784,11 @@ async function handleSearch(args: Record<string, unknown>, headline: string) {
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
     const a = (args ?? {}) as Record<string, unknown>;
+
+    // Bramka typow PRZED dispatchem - zeby zly typ konczyl sie czytelnym bledem
+    // narzedzia, a nie zapytaniem do CBOSA ze smieciem w parametrze.
+    const invalid = validateArgs(name, a);
+    if (invalid) return errorResult(invalid.msg, invalid.code);
 
     try {
         switch (name) {

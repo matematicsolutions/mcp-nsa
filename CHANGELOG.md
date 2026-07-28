@@ -3,6 +3,30 @@
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) +
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Argument type validation against the declared `inputSchema`.** The SDK's
+  `setRequestHandler(CallToolRequestSchema, …)` validates only the request envelope, never
+  the `arguments` payload, so `search` happily accepted `query` as a number or an array and
+  forwarded the garbage to CBOSA. A gate now runs before dispatch and rejects type
+  mismatches with the new `invalid_args` error code.
+- New error code **`invalid_args`** (wrong argument *type*). A *missing* required argument
+  still returns `missing_arg`, exactly as before — the two cases are deliberately kept
+  apart so this change does not silently rename an existing error.
+- `test/invalid-args.mjs` — drives the built server over real MCP stdio (6 rejection cases
+  plus a positive control proving well-typed calls still reach the upstream).
+
+### Notes
+
+- Found by an external audit: `Ahmad-Faraj/mcp-conformance`, check `tools-call-invalid-args`.
+- `enum` values are intentionally **not** enforced. Out-of-enum court names currently reach
+  CBOSA and sometimes work; tightening that is a behaviour change wider than the defect
+  being fixed, so it is left as a separate decision.
+- Version numbers are untouched: releasing bumps `package.json`, `server.json` and the
+  `serverInfo` literal in `src/index.ts` together.
+
 ## [1.2.0] — 2026-07-08
 
 Live re-audit of the CBOSA search backend (widen-round 2026-07-08). Two silent no-ops fixed,
