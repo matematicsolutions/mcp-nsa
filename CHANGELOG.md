@@ -15,8 +15,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) +
 - New error code **`invalid_args`** (wrong argument *type*). A *missing* required argument
   still returns `missing_arg`, exactly as before — the two cases are deliberately kept
   apart so this change does not silently rename an existing error.
-- `test/invalid-args.mjs` — drives the built server over real MCP stdio (6 rejection cases
-  plus a positive control proving well-typed calls still reach the upstream).
+- `test/invalid-args.mjs` — generic conformance test. It reads `tools/list` from the built
+  server over real MCP stdio and derives the cases from the declared schema, so a new tool is
+  covered automatically. 13 checks: wrong type per property, missing required, plus a positive
+  control proving well-typed calls still reach the upstream.
+- Union types (`type: ["string","number"]`) are normalised, so such properties are validated
+  instead of being silently skipped by the single-type switch.
 
 ### Notes
 

@@ -685,7 +685,7 @@ function typeOk(v: unknown, t: JsonType): boolean {
     }
 }
 
-function describe(v: unknown): string {
+function describeType(v: unknown): string {
     if (Array.isArray(v)) return "array";
     if (v === null) return "null";
     return typeof v;
@@ -701,8 +701,8 @@ function validateArgs(
 ): { msg: string; code: ErrorCode } | null {
     const tool = TOOLS.find((t) => t.name === toolName);
     if (!tool) return null;
-    const schema = tool.inputSchema as {
-        properties?: Record<string, { type?: string }>;
+    const schema = tool.inputSchema as unknown as {
+        properties?: Record<string, { type?: string | string[] }>;
         required?: readonly string[];
     };
     for (const req of schema.required ?? []) {
@@ -714,9 +714,14 @@ function validateArgs(
         if (val === undefined || val === null) continue;
         const spec = schema.properties?.[key];
         if (!spec || !spec.type) continue;
-        if (!typeOk(val, spec.type as JsonType)) {
+        // `type` w JSON Schema moze byc UNIA (np. ["string","number"] w id).
+        // Bez normalizacji takie pole wpadalo w `default: return true`, czyli
+        // bylo ciche NIE-walidowane - zlapane przez generyczny test, nie przez
+        // czytanie kodu.
+        const types = (Array.isArray(spec.type) ? spec.type : [spec.type]) as JsonType[];
+        if (!types.some((t) => typeOk(val, t))) {
             return {
-                msg: `parametr '${key}' ma byc typu ${spec.type}, dostano ${describe(val)}.`,
+                msg: `parametr '${key}' ma byc typu ${types.join(" | ")}, dostano ${describeType(val)}.`,
                 code: "invalid_args",
             };
         }
