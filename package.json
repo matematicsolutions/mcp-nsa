@@ -9,6 +9,7 @@
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
     "drift": "node test/drift.mjs",
+    "test:conformance": "node test/invalid-args.mjs",
     "test:parse": "node test/parse.mjs",
     "smoke": "node test/smoke.mjs"
   },
