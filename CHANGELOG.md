@@ -3,7 +3,7 @@
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) +
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.3.0] - 2026-07-28
 
 ### Added
 
@@ -28,8 +28,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) +
 - `enum` values are intentionally **not** enforced. Out-of-enum court names currently reach
   CBOSA and sometimes work; tightening that is a behaviour change wider than the defect
   being fixed, so it is left as a separate decision.
-- Version numbers are untouched: releasing bumps `package.json`, `server.json` and the
-  `serverInfo` literal in `src/index.ts` together.
+- Released as 1.3.0: `package.json`, `server.json` and the `serverInfo` literal in
+  `src/index.ts` bumped together. `serverInfo` had drifted behind the published version in
+  some connectors, so the handshake reported an older release than npm served.
 
 ## [1.2.0] — 2026-07-08
 

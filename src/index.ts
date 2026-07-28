@@ -730,7 +730,7 @@ function validateArgs(
 }
 
 const server = new Server(
-    { name: "mcp-nsa", version: "1.2.0" }, // keep in sync with package.json "version"
+    { name: "mcp-nsa", version: "1.3.0" }, // keep in sync with package.json "version"
     { capabilities: { tools: {} }, instructions: INSTRUCTIONS },
 );
 
