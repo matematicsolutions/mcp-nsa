@@ -106,20 +106,15 @@ query pattern and HTML parsing.
 
 MIT.
 
-## Part of the MateMatic legal stack
+## Part of MateMatic
 
-This server is one of five MCP connectors covering Polish jurisdiction +
-EU law, used by [Patron](https://github.com/matematicsolutions/patron)
-(AGPL-3.0) and any other MCP-aware legal AI agent.
+This connector queries its source live. It is one of the Polish and EU source connectors bundled in [PATRON](https://github.com/matematicsolutions/patron) and works with any MCP client.
 
-- **mcp-nsa** (this repo) - NSA + 16 WSA administrative courts (CBOSA)
-- [mcp-saos](https://github.com/matematicsolutions/mcp-saos) - common courts, SN, TK, KIO
-- [mcp-isap](https://github.com/matematicsolutions/mcp-isap) - Polish legislation (Dz.U. + M.P.)
-- [mcp-krs](https://github.com/matematicsolutions/mcp-krs) - Polish company registry (KRS)
-- [mcp-eu-sparql](https://github.com/matematicsolutions/mcp-eu-sparql) - EU law + CJEU (EUR-Lex)
+- Poland, one server for all sources: [prawo-pl-mcp](https://github.com/matematicsolutions/prawo-pl-mcp) · each source on its own: [mcp-saos](https://github.com/matematicsolutions/mcp-saos) · **mcp-nsa** (this repo) · [mcp-isap](https://github.com/matematicsolutions/mcp-isap) · [mcp-krs](https://github.com/matematicsolutions/mcp-krs) · [mcp-eureka](https://github.com/matematicsolutions/mcp-eureka) · [kio-orzeczenia-mcp](https://github.com/matematicsolutions/kio-orzeczenia-mcp)
+- European Union: [mcp-eu-sparql](https://github.com/matematicsolutions/mcp-eu-sparql) (live) · [mcp-eu-compliance](https://github.com/matematicsolutions/mcp-eu-compliance) (offline corpus)
+- A prepared corpus of Polish and EU law with a citation graph: [Repertorium](https://github.com/matematicsolutions/repertorium)
 
-
-All five MCP servers share the same `structuredContent.citations`
+`mcp-saos`, `mcp-nsa`, `mcp-isap`, `mcp-krs` and `mcp-eu-sparql` share one `structuredContent.citations`
 contract: each tool returns an array of `{title, url, snippet?, ...metadata}`
 that legal agents can render directly in their citation panel.
 
