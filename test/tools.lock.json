@@ -1,0 +1,119 @@
+{
+  "package_version": "1.3.0",
+  "toolset_sha256": "d4a3a5122c5fd0c57f41a84a840be670b0147880c0fec421adae841b693a36b9",
+  "tools": {
+    "get_judgment": {
+      "sha256": "019c9089b1a063bc6112497555d425d219480419b28b2b55a4d0dc55968d866e",
+      "descriptor": {
+        "annotations": {
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": true,
+          "readOnlyHint": true
+        },
+        "description": "Pobiera pelne orzeczenie z CBOSA po jego doc_id (10-znakowy hex). Zwraca metadane (sygnatura, sad, data, sklad, hasla tematyczne, podstawe prawna, typ orzeczenia) + pierwsze 2000 znakow tresci (sentencja + uzasadnienie). doc_id pochodzi z wynikow narzedzia 'search'.",
+        "inputSchema": {
+          "properties": {
+            "doc_id": {
+              "description": "10-znakowy hex doc_id z URL CBOSA, np. '7E50984BB7'.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "doc_id"
+          ],
+          "type": "object"
+        },
+        "name": "get_judgment"
+      }
+    },
+    "search": {
+      "sha256": "7eca7445e9b42cbfee7b64192b6ed322eed831838c5c27e86b661adbbdad5744",
+      "descriptor": {
+        "annotations": {
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": true,
+          "readOnlyHint": true
+        },
+        "description": "Przeszukuje Centralna Baze Orzeczen Sadow Administracyjnych (CBOSA) - Naczelny Sad Administracyjny + 16 wojewodzkich sadow administracyjnych. TU zyje merytoryczne orzecznictwo RODO/UODO, podatkowe, celne, kontrola decyzji administracji publicznej. SAOS NIE indeksuje tego pionu. Dla MVP zwraca top-N wynikow z pelnymi metadanymi (sygnatura, sad, data, sklad, hasla tematyczne, podst. prawna, fragment tresci). Max 5 dokumentow pobranych w jednym zapytaniu - kazda kolejna szczegolowa lektura przez get_judgment z konkretnym doc_id.",
+        "inputSchema": {
+          "properties": {
+            "caseNumber": {
+              "description": "Sygnatura akt, np. 'III OSK 1377/23' (NSA) albo 'I SA/Gl 659/22' (WSA).",
+              "type": "string"
+            },
+            "court": {
+              "description": "Nazwa sadu (pelna). Domyslnie wszystkie sady administracyjne.",
+              "enum": [
+                "Naczelny Sąd Administracyjny",
+                "Wojewódzki Sąd Administracyjny w Białymstoku",
+                "Wojewódzki Sąd Administracyjny w Bydgoszczy",
+                "Wojewódzki Sąd Administracyjny w Gdańsku",
+                "Wojewódzki Sąd Administracyjny w Gliwicach",
+                "Wojewódzki Sąd Administracyjny w Gorzowie Wielkopolskim",
+                "Wojewódzki Sąd Administracyjny w Kielcach",
+                "Wojewódzki Sąd Administracyjny w Krakowie",
+                "Wojewódzki Sąd Administracyjny w Lublinie",
+                "Wojewódzki Sąd Administracyjny w Łodzi",
+                "Wojewódzki Sąd Administracyjny w Olsztynie",
+                "Wojewódzki Sąd Administracyjny w Opolu",
+                "Wojewódzki Sąd Administracyjny w Poznaniu",
+                "Wojewódzki Sąd Administracyjny w Rzeszowie",
+                "Wojewódzki Sąd Administracyjny w Szczecinie",
+                "Wojewódzki Sąd Administracyjny w Warszawie",
+                "Wojewódzki Sąd Administracyjny we Wrocławiu"
+              ],
+              "type": "string"
+            },
+            "dateFrom": {
+              "description": "Data orzeczenia od (YYYY-MM-DD).",
+              "type": "string"
+            },
+            "dateTo": {
+              "description": "Data orzeczenia do (YYYY-MM-DD).",
+              "type": "string"
+            },
+            "pageNumber": {
+              "description": "Numer strony (od 1). CBOSA zwraca stale 10 wynikow na strone. Do paginacji.",
+              "minimum": 1,
+              "type": "number"
+            },
+            "query": {
+              "description": "Slowa kluczowe (pole 'wszystkieSlowa' w CBOSA), np. 'RODO art 6' albo 'tajemnica skarbowa'.",
+              "type": "string"
+            }
+          },
+          "required": [],
+          "type": "object"
+        },
+        "name": "search"
+      }
+    },
+    "search_by_case": {
+      "sha256": "53d099f3ad416527e468b20787956a8904b28e2cd2f9ea79c768aab1f399aaa5",
+      "descriptor": {
+        "annotations": {
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": true,
+          "readOnlyHint": true
+        },
+        "description": "Skrot: szuka orzeczenia po sygnaturze. Odpowiednik search z parametrem caseNumber. Jesli orzeczenie nie znajdzie sie - sygnatura moze byc z sadu powszechnego/SN/TK/KIO (uzyj wtedy saos__search_by_case).",
+        "inputSchema": {
+          "properties": {
+            "caseNumber": {
+              "description": "Sygnatura akt, np. 'III OSK 1377/23'.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "caseNumber"
+          ],
+          "type": "object"
+        },
+        "name": "search_by_case"
+      }
+    }
+  }
+}

@@ -4,6 +4,7 @@
   "description": "MCP server - Polish administrative court rulings (NSA + WSA) via CBOSA (orzeczenia.nsa.gov.pl)",
   "main": "dist/index.js",
   "scripts": {
+    "test:descriptors": "node test/descriptor-lock.mjs",
     "build": "tsc",
     "prepare": "tsc",
     "start": "node dist/index.js",
