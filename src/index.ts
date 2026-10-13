@@ -26,18 +26,32 @@ import {
     ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import https from "https";
+import http from "http";
 
 // ---------------------------------------------------------------------------
 // HTTP client (z opcjonalnym wylaczeniem weryfikacji SSL dla CBOSA)
 // ---------------------------------------------------------------------------
 
-const BASE_URL = "https://orzeczenia.nsa.gov.pl";
+// CBOSA_BASE_URL nadpisuje zrodlo (testy E2E na lokalnej atrapie CBOSA; jak SAOS_BASE_URL
+// w mcp-saos). Atrapa chodzi po http, wiec transport wybieramy po protokole.
+const BASE_URL = (process.env.CBOSA_BASE_URL ?? "https://orzeczenia.nsa.gov.pl").replace(/\/+$/, "");
+const IS_HTTPS = BASE_URL.startsWith("https:");
 const HTTP_TIMEOUT_MS = 30000;
 const DEFAULT_USER_AGENT =
     "Mozilla/5.0 (compatible; mcp-nsa/1.0; +https://github.com/matematicsolutions/mcp-nsa)";
 
 // Custom Agent z wylaczona weryfikacja SSL - tylko dla CBOSA (publiczne dane).
 const insecureAgent = new https.Agent({ rejectUnauthorized: false });
+
+/** Blad HTTP z kodem statusu - klasyfikacja bledu idzie po `status`, nie po tresci komunikatu. */
+class CbosaHttpError extends Error {
+    readonly status: number;
+    constructor(status: number, message: string) {
+        super(message);
+        this.name = "CbosaHttpError";
+        this.status = status;
+    }
+}
 
 interface HttpResponse {
     body: string;
@@ -73,12 +87,12 @@ async function httpRequest(args: {
             headers["Cookie"] = cookies.join("; ");
         }
 
-        const req = https.request(
+        const req = (IS_HTTPS ? https : http).request(
             url,
             {
                 method,
                 headers,
-                agent: insecureAgent,
+                ...(IS_HTTPS && { agent: insecureAgent }),
                 timeout: HTTP_TIMEOUT_MS,
             },
             (res) => {
@@ -105,8 +119,10 @@ async function httpRequest(args: {
                     return;
                 }
                 if (!res.statusCode || res.statusCode >= 400) {
+                    res.resume();
                     reject(
-                        new Error(
+                        new CbosaHttpError(
+                            res.statusCode ?? 0,
                             `HTTP ${res.statusCode} ${res.statusMessage} for ${url}`,
                         ),
                     );
@@ -345,7 +361,7 @@ async function nsaSearch(params: {
     dateFrom?: string;
     dateTo?: string;
     pageNumber?: number;
-}): Promise<{ ids: string[]; total: number }> {
+}, zrodla?: string[]): Promise<{ ids: string[]; total: number }> {
     // Nazwy pol ZWERYFIKOWANE live 2026-07-08 przeciw formularzowi /cbo/query:
     // daty to `odDaty`/`doDaty` (nie `dataOd`/`dataDo` - tamte byly cichym no-opem),
     // selecty przyjmuja wartosci tekstowe ("dowolny" / pelna nazwa sadu), nie indeksy.
@@ -365,6 +381,7 @@ async function nsaSearch(params: {
         submit: "Szukaj",
     };
     // POST rejestruje zapytanie w sesji CBOSA i zwraca strone 1 wynikow.
+    zrodla?.push(`${BASE_URL}/cbo/search`);
     const first = await throttled(() =>
         httpRequest({ path: "/cbo/search", method: "POST", formData }),
     );
@@ -372,19 +389,39 @@ async function nsaSearch(params: {
     let html = first.body;
     if (page > 1) {
         // Kolejne strony: GET /cbo/find?p=N z cookies sesji z POST-a.
+        zrodla?.push(`${BASE_URL}/cbo/find?p=${page}`);
         const next = await throttled(() =>
             httpRequest({ path: `/cbo/find?p=${page}`, cookies: first.cookies }),
         );
         html = next.body;
     }
-    return {
-        ids: extractDocIds(html),
-        total: extractTotalResults(html),
-    };
+    const ids = extractDocIds(html);
+    // Strona bez linkow /doc/ jest "zerem wynikow" TYLKO z komunikatem CBOSA (zmierzone na zywo
+    // 2026-10-13: "Nie znaleziono orzeczeń spełniających podany warunek!"). Inna strona 200
+    // (ban, captcha, zmiana ukladu) to awaria zrodla, nie "Brak wynikow".
+    if (ids.length === 0 && !PRAWDZIWE_ZERO.test(html) && !ZNALEZIONO.test(html)) {
+        throw new CbosaKsztaltBlad(
+            `CBOSA oddala strone bez wynikow i bez komunikatu o braku wynikow ` +
+                `(${first.body.length} B) - prawdopodobnie blokada, captcha albo zmiana ukladu.`,
+        );
+    }
+    return { ids, total: extractTotalResults(html) };
 }
 
-async function nsaGetJudgment(doc_id: string): Promise<JudgmentDetail> {
+const PRAWDZIWE_ZERO = /Nie znaleziono orzecze[nń]/i;
+const ZNALEZIONO = /Znaleziono\s+\d+\s+orzecze[nń]/;
+
+/** Odpowiedz 200, ktora nie jest ani wynikiem, ani uczciwym zerem - kod `upstream_shape`. */
+class CbosaKsztaltBlad extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = "CbosaKsztaltBlad";
+    }
+}
+
+async function nsaGetJudgment(doc_id: string, zrodla?: string[]): Promise<JudgmentDetail> {
     const safeId = doc_id.replace(/[^A-Z0-9]/g, "");
+    zrodla?.push(`${BASE_URL}/doc/${safeId}`);
     const res = await throttled(() =>
         httpRequest({ path: `/doc/${safeId}` }),
     );
@@ -423,6 +460,30 @@ function buildDetailCitation(d: JudgmentDetail): NsaCitation {
         doc_id: d.doc_id,
     };
 }
+
+// ---------------------------------------------------------------------------
+// Provenance w kazdym udanym wyniku (wzorzec soba-labs/krs-mcp #1, `src/tools/common.ts:38-51`):
+// zrodlo, czas pobrania, czas wytworzenia (jawne null - CBOSA go nie podaje, nie zgadujemy)
+// i co zrobil konektor. Pod warunki ponownego wykorzystania informacji sektora publicznego.
+// ---------------------------------------------------------------------------
+
+function provenance(zrodla: string[], processing: string) {
+    return {
+        source: zrodla.length === 1 ? zrodla[0] : zrodla,
+        retrieved_at: new Date().toISOString(),
+        source_produced_at: null,
+        processing,
+    };
+}
+
+const PROCESSING_SEARCH =
+    "Konektor wyslal formularz wyszukiwania CBOSA, wyciagnal z HTML identyfikatory dokumentow i " +
+    "liczbe trafien, a dla pierwszych 5 pobral strony orzeczen i wyciagnal metadane oraz poczatek " +
+    "tresci bez zmian merytorycznych (usuniete znaczniki HTML, fragment obciety do 200 znakow).";
+const PROCESSING_JUDGMENT =
+    "Konektor pobral strone orzeczenia CBOSA i wyciagnal z HTML metadane oraz sentencje z " +
+    "uzasadnieniem bez zmian merytorycznych; usunal znaczniki HTML i w podgladzie tekstowym " +
+    "obcial tresc do 2000 znakow.";
 
 // ---------------------------------------------------------------------------
 // Text formatters (czlowiekoczytelne dla LLM)
@@ -529,6 +590,8 @@ const INSTRUCTIONS = `Ten serwer MCP udostepnia orzecznictwo polskich sadow admi
   wszystkie sciezki, takze GET /doc i formularz /cbo/query), a 0.5 rps chodzilo 10 h czysto.
 - **Sady administracyjne TYLKO** - dla sadow powszechnych/SN/TK/KIO uzyj mcp-saos.
 - **\`structuredContent.citations\`** zawsze: title, url (orzeczenia.nsa.gov.pl), case_number, court, judgment_date, doc_id.
+- **\`structuredContent.provenance\`** w kazdym udanym wyniku: source (URL CBOSA), retrieved_at, source_produced_at (null - CBOSA go nie podaje), processing (co zrobil konektor).
+- **search: \`structuredContent.status\`** = ok albo degraded. Przy degraded \`structuredContent.partial_result\` mowi, ilu orzeczen nie pobrano, dlaczego i jak uzupelnic, a odpowiedz zaczyna sie od "Wynik niepelny". Powiedz o tym uzytkownikowi - to NIE jest pelna lista.
 - **Bez modyfikacji tresci wyroku** - integralna kopia z CBOSA.
 
 ## Iteracja po bledach
@@ -536,8 +599,10 @@ const INSTRUCTIONS = `Ten serwer MCP udostepnia orzecznictwo polskich sadow admi
 Tool zwraca \`isError: true\` + tekst z prefixem \`[code]\`. Kody:
 - \`missing_arg\` - brak doc_id (get_judgment) lub caseNumber (search_by_case).
 - \`invalid_args\` - parametr ma zly TYP wobec inputSchema (np. query jako liczba, pageNumber jako tekst). Popraw typ i powtorz - to blad wywolania, nie zrodla.
-- \`not_found\` - orzeczenie nie ma w CBOSA. Sprobuj search z innym query lub czy nie sad powszechny.
-- \`upstream_error\` - blad CBOSA (HTTP, timeout, scraping issue). Retry raz przed surface do uzytkownika.
+- \`not_found\` - orzeczenie nie ma w CBOSA (HTTP 404/410 zrodla). Nie ponawiaj; sprobuj search z innym query lub czy nie sad powszechny.
+- \`upstream_error\` - blad CBOSA (HTTP, timeout). Retry raz przed surface do uzytkownika.
+- \`upstream_shape\` - CBOSA oddala strone 200 bez wynikow i bez swojego komunikatu "Nie znaleziono orzeczen" (blokada, captcha, zmiana ukladu). To NIE jest brak orzeczen - powiedz o awarii zrodla, nie ponawiaj w petli.
+- \`forbidden\` - CBOSA odmowila dostepu (401/403). Nie ponawiaj, nie obchodz zabezpieczen - zglos czlowiekowi.
 
 ## Styl odpowiedzi
 
@@ -651,7 +716,13 @@ const TOOLS = [
 // ---------------------------------------------------------------------------
 
 // Strukturalne kody bledow.
-type ErrorCode = "missing_arg" | "invalid_args" | "not_found" | "upstream_error";
+type ErrorCode =
+    | "missing_arg"
+    | "invalid_args"
+    | "not_found"
+    | "forbidden"
+    | "upstream_shape"
+    | "upstream_error";
 
 function errorResult(text: string, code: ErrorCode) {
     return {
@@ -730,7 +801,7 @@ function validateArgs(
 }
 
 const server = new Server(
-    { name: "mcp-nsa", version: "1.3.0" }, // keep in sync with package.json "version"
+    { name: "mcp-nsa", version: "1.4.0" }, // keep in sync with package.json "version"
     { capabilities: { tools: {} }, instructions: INSTRUCTIONS },
 );
 
@@ -757,33 +828,64 @@ async function handleSearch(args: Record<string, unknown>, headline: string) {
         pageNumber:
             typeof args.pageNumber === "number" ? args.pageNumber : undefined,
     };
-    const { ids, total } = await nsaSearch(params);
+    const zrodla: string[] = [];
+    const { ids, total } = await nsaSearch(params, zrodla);
     // Sciagamy top-N pelnych metadanych zeby wystawic LLM-owi tytuly + fragmenty.
     const slice = ids.slice(0, DETAIL_FETCH_LIMIT);
     const detailed: JudgmentDetail[] = [];
+    const porazki: { doc_id: string; powod: string }[] = [];
     for (const id of slice) {
         try {
-            detailed.push(await nsaGetJudgment(id));
-        } catch {
-            /* ignore single doc fetch failures */
+            detailed.push(await nsaGetJudgment(id, zrodla));
+        } catch (e) {
+            // Pojedyncza porazka nie topi calego wyszukiwania - ale MUSI byc policzona:
+            // do 2026-10-13 tu stal pusty `catch {}` i citations kurczyly sie po cichu.
+            porazki.push({
+                doc_id: id,
+                powod: e instanceof CbosaHttpError ? `HTTP ${e.status}` : e instanceof Error ? e.message : String(e),
+            });
         }
     }
+    const skan = raportPobrania(slice.length, porazki);
+    const tekst = formatSearchResults({ ids, total, summary: headline, detailed });
     return {
         content: [
             {
                 type: "text",
-                text: formatSearchResults({
-                    ids,
-                    total,
-                    summary: headline,
-                    detailed,
-                }),
+                // Zdanie "Wynik niepelny" idzie na SAM POCZATEK - slaby model czyta poczatek odpowiedzi.
+                text: skan.partial_result ? `${zdanieWynikNiepelny(skan.partial_result)}\n\n${tekst}` : tekst,
             },
         ],
         structuredContent: {
+            status: skan.status,
+            partial_result: skan.partial_result,
             citations: detailed.map(buildDetailCitation),
+            provenance: provenance(zrodla, PROCESSING_SEARCH),
         },
     };
+}
+
+/** Trojstan pobrania metadanych: ok albo degraded z mianownikiem i powodem (bez cichego zera). */
+function raportPobrania(proby: number, porazki: { doc_id: string; powod: string }[]) {
+    if (porazki.length === 0) return { status: "ok" as const, partial_result: null };
+    const powody = [...new Set(porazki.map((p) => p.powod))].join(", ");
+    const brakujace = porazki.map((p) => p.doc_id);
+    return {
+        status: "degraded" as const,
+        partial_result: {
+            coverage: { unit: "metadane_orzeczen", total: proby, usable: proby - porazki.length },
+            brakujace_doc_id: brakujace,
+            czego_brakuje:
+                `Metadanych ${porazki.length} z ${proby} orzeczen z tej strony wynikow nie pobrano ` +
+                `(doc_id: ${brakujace.join(", ")}).`,
+            dlaczego: `CBOSA nie oddala strony orzeczenia (${powody}).`,
+            jak_uzupelnic: "Pobierz brakujace orzeczenia przez get_judgment z doc_id powyzej albo ponow search pozniej.",
+        },
+    };
+}
+
+function zdanieWynikNiepelny(p: { czego_brakuje: string; dlaczego: string }): string {
+    return `Wynik niepelny: ${p.czego_brakuje} ${p.dlaczego}`;
 }
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
@@ -809,11 +911,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                         "missing_arg",
                     );
                 }
-                const d = await nsaGetJudgment(a.doc_id);
+                const zrodla: string[] = [];
+                const d = await nsaGetJudgment(a.doc_id, zrodla);
                 return {
                     content: [{ type: "text", text: formatJudgment(d) }],
                     structuredContent: {
                         citations: [buildDetailCitation(d)],
+                        provenance: provenance(zrodla, PROCESSING_JUDGMENT),
                     },
                 };
             }
@@ -833,8 +937,24 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
     } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
-        if (/404|not found/i.test(msg)) {
+        // Klasyfikacja po STATUSIE, nie po tresci komunikatu: komunikat niesie URL z doc_id,
+        // wiec do 2026-10-13 regex /404/ bral 5xx dla doc_id "8404..." za brak orzeczenia,
+        // a 410 (tak CBOSA odpowiada na nieistniejacy doc_id - zmierzone) szedl jako
+        // upstream_error "sprobuj ponownie".
+        if (err instanceof CbosaHttpError && (err.status === 404 || err.status === 410)) {
             return errorResult(`Orzeczenie nie znalezione w CBOSA: ${msg}.`, "not_found");
+        }
+        if (err instanceof CbosaHttpError && (err.status === 401 || err.status === 403)) {
+            return errorResult(
+                `CBOSA odmowila dostepu: ${msg}. Nie ponawiaj i nie obchodz zabezpieczen - zglos czlowiekowi.`,
+                "forbidden",
+            );
+        }
+        if (err instanceof CbosaKsztaltBlad) {
+            return errorResult(
+                `${msg} To NIE jest brak orzeczen - powiedz uzytkownikowi o awarii zrodla.`,
+                "upstream_shape",
+            );
         }
         return errorResult(
             `Blad komunikacji z CBOSA (orzeczenia.nsa.gov.pl): ${msg}. Sprobuj ponownie za chwile.`,

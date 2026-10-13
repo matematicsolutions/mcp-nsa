@@ -54,6 +54,8 @@ Test via the MCP Inspector: `npx @modelcontextprotocol/inspector node dist/index
 - **DO NOT add tools that send PII** outside CBOSA.
 - **DO NOT modify ruling content**.
 - **DO NOT cache queries with PII** in the connector.
+- **A `401`/`403` from CBOSA means access controls changed: it requires human review.** It maps to `forbidden`. Never retry it in a loop or bypass new protections automatically (rotated headers, solving captchas, scraping workarounds).
+- **A page without results is "zero results" ONLY with CBOSA's own "Nie znaleziono orzeczen" message.** Any other 200 page without `/doc/` links is `upstream_shape` - never report it as an empty result.
 
 ## Sources of truth
 

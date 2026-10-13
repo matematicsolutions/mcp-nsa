@@ -1,6 +1,6 @@
 {
   "name": "@matematicsolutions/mcp-nsa",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "MCP server - Polish administrative court rulings (NSA + WSA) via CBOSA (orzeczenia.nsa.gov.pl)",
   "main": "dist/index.js",
   "scripts": {
@@ -12,6 +12,8 @@
     "drift": "node test/drift.mjs",
     "test:conformance": "node test/invalid-args.mjs",
     "test:parse": "node test/parse.mjs",
+    "test:e2e": "node --test test/e2e-atrapa.test.mjs test/zero-wynikow.test.mjs test/package-gate.test.mjs test/sonda.test.mjs",
+    "test:package": "node test/package-gate.mjs",
     "smoke": "node test/smoke.mjs"
   },
   "keywords": [

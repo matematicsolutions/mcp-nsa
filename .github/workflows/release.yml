@@ -40,6 +40,17 @@ jobs:
       - name: Build
         run: npm run build
 
+      # Do 2026-10-13 wydanie szlo `npm ci -> build -> publish` bez zadnego testu: bramki
+      # chronily tylko laptopa. Smoke i conformance (oba bija w zywe CBOSA) celowo poza
+      # wydaniem - awaria zrodla nie blokuje NASZEGO wydania.
+      - name: Run gates before publishing
+        run: |
+          npm run drift
+          npm run test:parse
+          npm run test:e2e
+          npm run test:descriptors
+          npm run test:package
+
       # --provenance dropped: npm@latest global reinstall corrupts the bundled
       # sigstore module in this runner image (MODULE_NOT_FOUND 'sigstore'),
       # and the default npm shipped with setup-node is new enough to publish.

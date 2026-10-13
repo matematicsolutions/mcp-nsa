@@ -1,0 +1,45 @@
+name: sonda-zgodnosci
+
+# Codzienna sonda zgodnosci ze zrodlem na jednym znanym rekordzie (wzorzec soba-labs/krs-mcp #2).
+# CI i smoke sprawdzaja NASZ kod; sonda sprawdza, czy ZRODLO nadal mowi tym samym jezykiem.
+#
+# Trojstan z `node test/sonda.mjs`:
+#   0  OK      - nic
+#   10 UWAGI   - chwilowa niedostepnosc (5xx/timeout): ostrzezenie, job
+#                zielony, nie budzimy czlowieka
+#   20 BLOKADA - zmiana kontraktu rekordu, 403, nieznany ksztalt: job czerwony = powiadomienie
+#                maintainerow. Zadnych automatycznych issue (repo publiczne).
+# 403 = przeglad czlowieka. Nie dopisuj tu automatycznego obchodzenia zabezpieczen.
+
+on:
+  schedule:
+    - cron: "26 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sonda:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - run: npm ci
+
+      - run: npm run build
+
+      - name: Sonda zgodnosci
+        run: |
+          set +e
+          node test/sonda.mjs
+          kod=$?
+          if [ "$kod" -eq 10 ]; then
+            echo "::warning::Zrodlo chwilowo niedostepne (UWAGI) - nie budzimy czlowieka"
+            exit 0
+          fi
+          exit "$kod"

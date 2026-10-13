@@ -3,6 +3,31 @@
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) +
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-10-13
+
+Odpornosc na ciche awarie zrodla (wzorce z oceny soba-labs/krs-mcp i leniwyposel/sejm-mcp,
+retrofit z mcp-saos, 2026-10-13). Wersja minor: kody bledow sa rozdzielone (konkretniejsze niz `upstream_error`), ale zaden znany konsument nie rozgalezia sie na nich - PATRON czyta tylko `isError`, prawo-pl-mcp opakowuje bledy konektora we wlasny `upstream_error` (sprawdzone 2026-10-13).
+sa addytywne (nowe pola), ale nieistniejacy `doc_id` daje teraz `not_found` zamiast `upstream_error` -
+klient branchujacy na kodzie zobaczy roznice. Opisy narzedzi (tools/list) bez zmian -
+`tools.lock.json` przechodzi.
+
+### Fixed
+
+- **Nieistniejacy `doc_id`**: CBOSA odpowiada 410 (zmierzone na zywo), a klasyfikacja szla regexem `/404|not found/` po tresci komunikatu - 410 wychodzil jako `upstream_error` "sprobuj ponownie". Teraz `not_found`.
+- **Ten sam regex** czytal komunikat z URL-em, wiec 5xx dla `doc_id` zawierajacego "404" (np. `8404ABCDEF`) wychodzil jako `not_found` - awaria zrodla udawala brak orzeczenia. Klasyfikacja idzie teraz po kodzie statusu (`CbosaHttpError.status`).
+- **Obca strona 200 jako "Brak wynikow"**: kazda strona bez linkow `/doc/` (ban, captcha, zmiana ukladu) dawala "Brak wynikow w bazie CBOSA". Zmierzone na zywo: prawdziwe zero ma komunikat "Nie znaleziono orzeczeń spełniających podany warunek!". Teraz strona bez wynikow i bez tego komunikatu -> `upstream_shape` (nowy kod); zywe zero nadal daje uczciwy pusty wynik (sprawdzone przez MCP na zywym CBOSA).
+- **401/403 CBOSA** wychodzil jako `upstream_error` "sprobuj ponownie" - teraz `forbidden` (nowy kod; przeglad czlowieka, bez obchodzenia zabezpieczen).
+- **`search` / `search_by_case`**: nieudane pobranie strony orzeczenia konczylo sie pustym `catch {}` - citations kurczyly sie po cichu. Teraz `structuredContent.status` (`ok` / `degraded`), `partial_result` (mianownik `coverage`, `brakujace_doc_id`, dlaczego, jak uzupelnic), a odpowiedz ZACZYNA SIE od "Wynik niepelny: ...".
+
+### Added
+
+- Sonda zgodnosci `node test/sonda.mjs` (wzorzec soba-labs/krs-mcp #2): znany rekord CBOSA doc 8889489BE0 (II FSK 2870/18): `get_judgment` + `search_by_case`, przez protokol MCP do zbudowanego serwera; trojstan 0 OK / 10 UWAGI / 20 BLOKADA (`upstream_error` (5xx/timeout) = UWAGI; obca strona 200 i zniknicie rekordu = BLOKADA); pusta lista kontroli = BLOKADA. Workflow `sonda-zgodnosci.yml` codziennie (bez automatycznych issue). Testy na atrapie `test/sonda.test.mjs`; na zywo 13.10: OK 2/2.
+- `structuredContent.provenance` w kazdym udanym wyniku: `source` (URL-e CBOSA), `retrieved_at`, `source_produced_at: null` (jawnie - CBOSA go nie podaje), `processing` (wzorzec soba-labs/krs-mcp, warunki ponownego wykorzystania ISP).
+- `CBOSA_BASE_URL` (env) - testy E2E na lokalnej atrapie CBOSA przez protokol MCP (`test/e2e-atrapa.test.mjs`, `npm run test:e2e`); atrapa podaje zrzuty HTML z zywego CBOSA z `test/fixtures`. Test provenance z pelnym mianownikiem: `tools/list` == klucze wywolan, pusta lista = BLOKADA.
+- Smoke: provenance dla kazdego narzedzia, zywy przypadek 410 -> `not_found`, pelny mianownik (kazde narzedzie z `tools/list` wywolane na zywo).
+- Bramka paczki `npm run test:package` (`npm pack --dry-run --json`; wymagane pliki wyprowadzone z `bin`/`main` + przechodnich `require`/`import` w `dist/`, pusta lista = BLOKADA).
+- `release.yml`: krok "Run gates before publishing" (drift, parse, e2e, descriptor lock, bramka paczki) - do tej pory wydanie szlo bez zadnego testu. `ci.yml`: e2e + bramka paczki.
+
 ## [1.3.0] - 2026-07-28
 
 ### Added
