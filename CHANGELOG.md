@@ -3,6 +3,16 @@
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) +
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.1] - 2026-10-13
+
+Aktualizacja zaleznosci (bezpieczenstwo). Bez zmian w kodzie serwera i w kontrakcie narzedzi.
+
+### Security
+
+- `npm audit`: 6 doradztw (1 krytyczne, 2 wysokie, 3 srednie) -> 0. Zadna paczka nie doszla ani nie zniknela (porownanie zbiorow z lockfile'a); `@modelcontextprotocol/sdk` -> 1.32.1 i jego zaleznosci transportow HTTP (hono, proxy-addr, qs, ip-address, fast-uri i inne).
+- Ekspozycja przed poprawka (zderzone z kodem): serwer uzywa wylacznie `StdioServerTransport` - zaleznosci HTTP SDK nie sa ladowane; doradztwo SDK dotyczy KLIENTA OAuth. Realna ekspozycja bliska zera - aktualizacja, bo tania i bez zmiany wersji glownej SDK.
+- Weryfikacja: build, wszystkie bramki offline, zywy smoke NIEMOZLIWY 13.10 (CBOSA blokuje nasze IP) - wydanie wstrzymane do przebiegu na zywym zrodle.
+
 ## [1.4.0] - 2026-10-13
 
 Odpornosc na ciche awarie zrodla (wzorce z oceny soba-labs/krs-mcp i leniwyposel/sejm-mcp,

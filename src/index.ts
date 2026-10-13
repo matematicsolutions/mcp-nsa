@@ -801,7 +801,7 @@ function validateArgs(
 }
 
 const server = new Server(
-    { name: "mcp-nsa", version: "1.4.0" }, // keep in sync with package.json "version"
+    { name: "mcp-nsa", version: "1.4.1" }, // keep in sync with package.json "version"
     { capabilities: { tools: {} }, instructions: INSTRUCTIONS },
 );
 
